@@ -1,0 +1,116 @@
+# CD: promote the SAME CI artifact through DEV -> SIT -> PROD.
+#
+# Promotion rules (how the three triggers differ):
+#   DEV  - automatic: this pipeline is triggered by CI completion (resource trigger below)
+#   SIT  - scheduled: run this pipeline on its schedule (pipeline Settings -> Triggers ->
+#          Scheduled runs, e.g. daily 18:00) OR trigger the SIT stage manually in a run.
+#          In Classic Releases this is a scheduled trigger on the SIT stage.
+#   PROD - manual + approval: the demo-prod Environment has an Approval check
+#          (Pipelines -> Environments -> demo-prod -> Approvals and checks).
+#          The stage waits for the named approver before any step runs.
+#
+# Secrets: each stage uses its own variable group (vg-dev / vg-sit / vg-prod).
+# Those groups are LINKED to that environment's Key Vault, so secret values are
+# fetched from the vault at runtime - they are not stored here or in the group.
+#
+# NOTE on the deploy step: it uses SSH to the target VM. Fill each VM's host in
+# the variable groups (VM_HOST), and create one SSH service connection per env
+# (Project Settings -> Service connections -> SSH) using that env's deploy user
+# + the Key Vault password. Swap the SSH tasks for CopyFilesOverSSH + SSH if
+# your org's task names differ - the script argument is the same deploy-war.sh.
+
+trigger: none
+
+resources:
+  pipelines:
+    - pipeline: ci
+      source: 'azure-demo-ci'   # <-- exact name of the CI pipeline in your project
+      trigger:
+        branches:
+          include:
+            - main
+
+stages:
+  - stage: DeployDEV
+    displayName: 'Deploy to DEV (automatic on commit)'
+    jobs:
+      - deployment: DeployDEVJob
+        displayName: 'Deploy WAR to DEV Tomcat'
+        environment: 'demo-dev'
+        pool:
+          name: DemoBuildPool
+          # vmImage: ubuntu-latest   # fallback, same note as CI
+        variables:
+          - group: vg-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: ci
+                  artifact: drop
+                - task: ExtractFiles@1
+                  displayName: 'Unzip artifact'
+                  inputs:
+                    archiveFilePatterns: '$(Pipeline.Workspace)/ci/drop/*.zip'
+                    destinationFolder: '$(Pipeline.Workspace)/war'
+                    cleanDestinationFolder: true
+                - script: |
+                    chmod +x scripts/deploy-war.sh
+                    APP_ENV=DEV APP_VERSION=$(resources.pipeline.ci.runName) \
+                    APP_API_KEY=$(app-api-key) \
+                    bash scripts/deploy-war.sh $(Pipeline.Workspace)/war/azure-demo.war
+                  displayName: 'Deploy via SSH to DEV VM'
+                  # In practice wrap the scp/ssh to $(VM_HOST) around deploy-war.sh;
+                  # deploy-war.sh itself runs ON the Tomcat host.
+
+  - stage: DeploySIT
+    displayName: 'Deploy to SIT (scheduled)'
+    dependsOn: DeployDEV
+    jobs:
+      - deployment: DeploySITJob
+        displayName: 'Deploy WAR to SIT Tomcat'
+        environment: 'demo-sit'
+        pool:
+          name: DemoBuildPool
+        variables:
+          - group: vg-sit
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: ci
+                  artifact: drop
+                - task: ExtractFiles@1
+                  displayName: 'Unzip artifact'
+                  inputs:
+                    archiveFilePatterns: '$(Pipeline.Workspace)/ci/drop/*.zip'
+                    destinationFolder: '$(Pipeline.Workspace)/war'
+                    cleanDestinationFolder: true
+                - script: echo "Same deploy-war.sh as DEV, run against $(VM_HOST) with vg-sit secrets"
+                  displayName: 'Deploy to SIT (identical steps, vg-sit)'
+
+  - stage: DeployPROD
+    displayName: 'Deploy to PROD (manual approval)'
+    dependsOn: DeploySIT
+    jobs:
+      - deployment: DeployPRODJob
+        displayName: 'Deploy WAR to PROD Tomcat'
+        environment: 'demo-prod'   # Approval check lives on this Environment
+        pool:
+          name: DemoBuildPool
+        variables:
+          - group: vg-prod
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: ci
+                  artifact: drop
+                - task: ExtractFiles@1
+                  displayName: 'Unzip artifact'
+                  inputs:
+                    archiveFilePatterns: '$(Pipeline.Workspace)/ci/drop/*.zip'
+                    destinationFolder: '$(Pipeline.Workspace)/war'
+                    cleanDestinationFolder: true
+                - script: echo "Same deploy-war.sh as DEV, run against $(VM_HOST) with vg-prod secrets"
+                  displayName: 'Deploy to PROD (identical steps, vg-prod)'

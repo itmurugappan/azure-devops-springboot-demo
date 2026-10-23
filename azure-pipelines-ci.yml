@@ -1,0 +1,49 @@
+# CI: compile + test the Spring Boot WAR, zip it, publish ONE artifact.
+# The same artifact is promoted DEV -> SIT -> PROD. Never rebuild per env.
+name: $(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  # Self-hosted BUILD VM agent (corporate pattern). Create this pool and
+  # register vm-build-01 in it during the Azure DevOps setup phase.
+  name: DemoBuildPool
+  # FALLBACK if the BUILD VM agent is not ready: comment the two lines above
+  # and uncomment the line below - pipeline works unchanged.
+  # vmImage: ubuntu-latest
+
+variables:
+  MAVEN_CACHE_FOLDER: $(Pipeline.Workspace)/.m2/repository
+  MAVEN_OPTS: '-Dmaven.repo.local=$(MAVEN_CACHE_FOLDER)'
+
+steps:
+  - task: Maven@4
+    displayName: 'Maven clean verify (build + test + package WAR)'
+    inputs:
+      mavenPomFile: 'pom.xml'
+      goals: 'clean verify'
+      options: '-Dapp.version=$(Build.BuildNumber)'
+      publishJUnitResults: true
+      testResultsFiles: '**/surefire-reports/TEST-*.xml'
+      javaHomeOption: 'JDKVersion'
+      jdkVersionOption: '1.17'
+      mavenVersionOption: 'Default'
+
+  - task: ArchiveFiles@2
+    displayName: 'Zip the WAR'
+    inputs:
+      rootFolderOrFile: '$(System.DefaultWorkingDirectory)/target/azure-demo.war'
+      includeRootFolder: false
+      archiveType: 'zip'
+      archiveFile: '$(Build.ArtifactStagingDirectory)/azure-demo-$(Build.BuildNumber).zip'
+      replaceExistingArchive: true
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish artifact to Azure Artifacts (pipeline artifact)'
+    inputs:
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+      ArtifactName: 'drop'
+      publishLocation: 'Container'
