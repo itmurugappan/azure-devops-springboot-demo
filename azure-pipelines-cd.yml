@@ -9,7 +9,7 @@ trigger: none
 resources:
   pipelines:
     - pipeline: ci
-      source: 'itmurugappan.azure-devops-springboot-demo'
+      source: 'CI-itmurugappan.azure-devops-springboot-demo'
       trigger:
         branches:
           include:
