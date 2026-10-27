@@ -1,23 +1,23 @@
-# CD v2 - working DEV deploy. SIT/PROD stages are present but DISABLED until
-# their VMs + vaults + variable groups exist (Steps after DEV CD proof).
-# When an env is enabled, its stage block is replaced with a mirror of the DEV
-# block (own variable group, own VM_HOST, own APP_ENV value).
-#
+# CD v3 - DEV auto-deploy + PROD approval-gated deploy (PROD stage enabled 2026-10-27).
+# SIT stage remains present but DISABLED (ENABLE_SIT=false; SIT was skipped by decision -
+# PROD depends on DEV directly so the enabled PROD stage is not blocked by the skipped SIT).
+# PROD block is a mirror of DEV: own variable group (vg-prod), own VM_HOST (10.0.0.6),
+# APP_ENV=PROD. Approval check lives on the demo-prod environment in Azure DevOps.
 
 trigger: none
 
 resources:
   pipelines:
     - pipeline: ci
-      source: 'CI-itmurugappan.azure-devops-springboot-demo'
+      source: 'itmurugappan.azure-devops-springboot-demo'
       trigger:
         branches:
           include:
             - main
 
 variables:
-  ENABLE_SIT: 'false'   # flip to 'true' only after SIT VM + vg-sit are ready
-  ENABLE_PROD: 'false'  # flip to 'true' only after PROD VM + vg-prod are ready
+  ENABLE_SIT: 'false'   # SIT intentionally not built for this demo; stage stays defined but off
+  ENABLE_PROD: 'true'   # PROD VM + kv-azdemo-prod + vg-prod are ready (2026-10-27)
 
 stages:
   - stage: DeployDEV
@@ -46,8 +46,7 @@ stages:
                   inputs:
                     archiveFilePatterns: '$(Pipeline.Workspace)/ci/drop/*.zip'
                     destinationFolder: '$(Pipeline.Workspace)/war'
-                    cleanDestinationFolder: false
-                    overwriteExistingFiles: true
+                    cleanDestinationFolder: true
                 - bash: |
                     set -e
                     ls -lh $(Pipeline.Workspace)/war
@@ -73,8 +72,8 @@ stages:
                   displayName: 'SIT placeholder'
 
   - stage: DeployPROD
-    displayName: 'Deploy to PROD (manual + approval - disabled until PROD exists)'
-    dependsOn: DeploySIT
+    displayName: 'Deploy to PROD (approval-gated on demo-prod environment)'
+    dependsOn: DeployDEV
     condition: and(succeeded(), eq(variables.ENABLE_PROD, 'true'))
     jobs:
       - deployment: DeployPRODJob
@@ -82,9 +81,28 @@ stages:
         environment: 'demo-prod'
         pool:
           name: DemoBuildPool
+        variables:
+          - group: vg-prod
+          - name: VM_HOST
+            value: '10.0.0.6'
+          - name: APP_ENV_NAME
+            value: 'PROD'
         strategy:
           runOnce:
             deploy:
               steps:
-                - script: echo "PROD stage placeholder - replaced with DEV-mirror deploy steps when PROD is enabled. Approval check lives on demo-prod environment."
-                  displayName: 'PROD placeholder'
+                - checkout: self
+                - download: ci
+                  artifact: drop
+                - task: ExtractFiles@1
+                  displayName: 'Unzip CI artifact'
+                  inputs:
+                    archiveFilePatterns: '$(Pipeline.Workspace)/ci/drop/*.zip'
+                    destinationFolder: '$(Pipeline.Workspace)/war'
+                    cleanDestinationFolder: true
+                - bash: |
+                    set -e
+                    ls -lh $(Pipeline.Workspace)/war
+                    scp -o StrictHostKeyChecking=accept-new $(Pipeline.Workspace)/war/azure-demo.war scripts/deploy-war.sh azureuser@$(VM_HOST):/tmp/
+                    ssh -o StrictHostKeyChecking=accept-new azureuser@$(VM_HOST) "sudo APP_ENV=$(APP_ENV_NAME) APP_VERSION=$(resources.pipeline.ci.runName) APP_API_KEY='$(app-api-key)' bash /tmp/deploy-war.sh /tmp/azure-demo.war"
+                  displayName: 'Deploy WAR to PROD via SSH (private VNet IP)'
