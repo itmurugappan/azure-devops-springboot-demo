@@ -31,7 +31,7 @@ public class HelloController {
                 ? "NO"
                 : "YES (length " + secret.length() + ")";
         String now = ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
-        return "<h1>Azure DevOps Demo - V2</h1>"
+        return "<h1>Azure DevOps Demo - V3</h1>"
                 + "<p>Environment: <b>" + env + "</b></p>"
                 + "<p>Build version: <b>" + version + "</b></p>"
                 + "<p>Secret loaded from Key Vault: <b>" + secretStatus + "</b></p>"
