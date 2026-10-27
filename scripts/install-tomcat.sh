@@ -11,13 +11,16 @@ sudo apt-get install -y openjdk-17-jdk curl unzip
 
 if [ ! -d "$TOMCAT_HOME" ]; then
   cd /tmp
-  curl -fsSLO "https://downloads.apache.org/tomcat/tomcat-10/v${TOMCAT_VERSION}/bin/apache-tomcat-${TOMCAT_VERSION}.tar.gz"
+  curl -fsSLO "https://archive.apache.org/dist/tomcat/tomcat-10/v${TOMCAT_VERSION}/bin/apache-tomcat-${TOMCAT_VERSION}.tar.gz"
   sudo mkdir -p "$TOMCAT_HOME"
   sudo tar -xzf "apache-tomcat-${TOMCAT_VERSION}.tar.gz" -C "$TOMCAT_HOME" --strip-components=1
 fi
 
 sudo mkdir -p "$TOMCAT_HOME/backup"
-sudo chmod +x "$TOMCAT_HOME/bin/"*.sh
+# Tar extracted as root can be unreadable by the ssh user; make it readable and
+# expand the *.sh glob inside a root shell (plain sudo chmod fails on the glob).
+sudo chmod -R a+rX "$TOMCAT_HOME"
+sudo sh -c 'chmod +x /opt/tomcat/bin/*.sh'
 
 # systemd service so Tomcat survives reboots and `systemctl restart tomcat` works
 sudo tee /etc/systemd/system/tomcat.service >/dev/null <<'EOF'
