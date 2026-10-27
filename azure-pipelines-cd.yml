@@ -47,6 +47,7 @@ stages:
                     archiveFilePatterns: '$(Pipeline.Workspace)/ci/drop/*.zip'
                     destinationFolder: '$(Pipeline.Workspace)/war'
                     cleanDestinationFolder: true
+                    overwriteExistingFiles: true
                 - bash: |
                     set -e
                     ls -lh $(Pipeline.Workspace)/war
