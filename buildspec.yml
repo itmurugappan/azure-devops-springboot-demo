@@ -1,0 +1,23 @@
+version: 0.2
+
+# CodeBuild spec for the AWS DevOps demo (aws-devops branch).
+# Twin of the Azure CI pipeline: Maven build, then package a CodeDeploy-ready
+# bundle: the WAR + appspec.yml + lifecycle hook scripts + version.txt.
+phases:
+  install:
+    runtime-versions:
+      java: corretto17
+  build:
+    commands:
+      - echo "Build started on $(date), build number $CODEBUILD_BUILD_NUMBER"
+      - mvn -B clean verify
+      - echo "$CODEBUILD_BUILD_NUMBER" > version.txt
+      - chmod +x scripts/aws/*.sh
+
+artifacts:
+  files:
+    - target/azure-demo.war
+    - appspec.yml
+    - version.txt
+    - scripts/**/*
+  discard-paths: no

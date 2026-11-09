@@ -1,0 +1,29 @@
+version: 0.0
+os: linux
+
+# CodeDeploy deployment spec. The bundle (built by CodeBuild) is extracted,
+# BeforeInstall runs, the files below are copied, then AfterInstall,
+# ApplicationStart and ValidateService run in that order.
+files:
+  - source: /target/azure-demo.war
+    destination: /tmp/aws-demo-deploy
+  - source: /version.txt
+    destination: /tmp/aws-demo-deploy
+
+hooks:
+  BeforeInstall:
+    - location: scripts/aws/before-install.sh
+      timeout: 300
+      runas: root
+  AfterInstall:
+    - location: scripts/aws/install-app.sh
+      timeout: 300
+      runas: root
+  ApplicationStart:
+    - location: scripts/aws/start-app.sh
+      timeout: 120
+      runas: root
+  ValidateService:
+    - location: scripts/aws/validate-service.sh
+      timeout: 180
+      runas: root
