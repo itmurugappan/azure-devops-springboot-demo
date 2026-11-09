@@ -6,7 +6,7 @@ set -euo pipefail
 TOMCAT_VERSION="10.1.31"
 TOMCAT_HOME="/opt/tomcat"
 
-sudo dnf install -y java-17-amazon-corretto-devel curl unzip
+sudo dnf install -y java-17-amazon-corretto-devel unzip
 
 JAVA_HOME_RESOLVED="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
 echo "JAVA_HOME resolved to: $JAVA_HOME_RESOLVED"
